@@ -3,21 +3,20 @@ from ultralytics import YOLO
 import cv2
 import numpy as np
 from PIL import Image
-from collections import Counter
 import os
 
-# =====================================
+# ====================================
 # PAGE CONFIG
-# =====================================
+# ====================================
 st.set_page_config(
     page_title="RupiScan",
     page_icon="💰",
     layout="wide"
 )
 
-# =====================================
+# ====================================
 # CUSTOM CSS
-# =====================================
+# ====================================
 st.markdown("""
 <style>
 
@@ -28,33 +27,25 @@ html, body, [class*="css"] {
 }
 
 .stApp {
-    background: #f5f7fb;
+    background-color: #f4f7fb;
 }
 
-/* HIDE STREAMLIT */
-#MainMenu {
-    visibility: hidden;
-}
+/* hide streamlit */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
 
-footer {
-    visibility: hidden;
-}
-
-header {
-    visibility: hidden;
-}
-
-/* NAVBAR */
+/* navbar */
 .navbar {
     background: white;
-    padding: 18px 35px;
+    padding: 20px 30px;
     border-radius: 18px;
     margin-bottom: 25px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.05);
 }
 
 .logo {
-    font-size: 28px;
+    font-size: 30px;
     font-weight: 700;
     color: #111827;
 }
@@ -63,7 +54,7 @@ header {
     color: #7c3aed;
 }
 
-/* CARD */
+/* card */
 .card {
     background: white;
     padding: 22px;
@@ -72,95 +63,87 @@ header {
     border: 1px solid #ececec;
 }
 
-/* BUTTON */
-.stButton > button {
-    width: 100%;
-    background: linear-gradient(135deg,#7c3aed,#8b5cf6);
-    color: white;
-    border: none;
-    border-radius: 14px;
-    padding: 14px;
-    font-weight: 600;
-    font-size: 16px;
-}
-
-.stButton > button:hover {
-    opacity: 0.9;
-}
-
-/* FILE UPLOADER */
+/* upload */
 [data-testid="stFileUploader"] {
     border: 2px dashed #d1d5db;
     border-radius: 16px;
-    padding: 10px;
+    padding: 15px;
 }
 
-/* RESULT BOX */
-.result-box {
+/* button */
+.stButton>button {
+    width: 100%;
+    border: none;
+    border-radius: 14px;
+    padding: 14px;
     background: linear-gradient(135deg,#7c3aed,#8b5cf6);
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.stButton>button:hover {
+    opacity: 0.92;
+}
+
+/* result box */
+.total-box {
+    background: linear-gradient(135deg,#7c3aed,#8b5cf6);
+    color: white;
     padding: 22px;
     border-radius: 18px;
-    color: white;
     margin-top: 18px;
 }
 
-.result-title {
+.total-title {
     font-size: 16px;
     opacity: 0.9;
 }
 
-.result-money {
-    font-size: 34px;
+.total-money {
+    font-size: 36px;
     font-weight: 700;
 }
 
-/* TABLE */
+/* money item */
 .money-item {
     background: #f9fafb;
+    border: 1px solid #ececec;
     border-radius: 14px;
     padding: 14px 16px;
     margin-bottom: 12px;
-    border: 1px solid #ececec;
 }
 
 .money-top {
     display: flex;
     justify-content: space-between;
     font-weight: 600;
-    margin-bottom: 6px;
 }
 
 .money-sub {
+    margin-top: 6px;
     color: #6b7280;
     font-size: 14px;
 }
 
-/* IMAGE */
+/* image */
 .result-image img {
     border-radius: 18px;
 }
 
-/* EMPTY */
-.empty-box {
-    text-align: center;
-    padding: 60px 20px;
-    color: #6b7280;
-}
-
-/* FOOTER */
+/* footer */
 .footer {
     text-align: center;
+    margin-top: 35px;
     color: gray;
-    margin-top: 40px;
-    padding-bottom: 20px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-# =====================================
+# ====================================
 # LOAD MODEL
-# =====================================
+# ====================================
 @st.cache_resource
 def load_model():
 
@@ -169,16 +152,26 @@ def load_model():
     model_path = os.path.join(BASE_DIR, "best.pt")
 
     if not os.path.exists(model_path):
-        st.error(f"Model tidak ditemukan: {model_path}")
+        st.error("❌ File best.pt tidak ditemukan")
         st.stop()
 
-    return YOLO(model_path)
+    if os.path.getsize(model_path) == 0:
+        st.error("❌ File best.pt kosong / corrupt")
+        st.stop()
+
+    try:
+        model = YOLO(model_path)
+        return model
+
+    except Exception as e:
+        st.error(f"❌ Gagal load model: {e}")
+        st.stop()
 
 model = load_model()
 
-# =====================================
+# ====================================
 # COLORS
-# =====================================
+# ====================================
 colors = {
     "1000": (255, 0, 0),
     "2000": (0, 255, 0),
@@ -189,9 +182,9 @@ colors = {
     "100000": (0, 0, 255)
 }
 
-# =====================================
+# ====================================
 # NAVBAR
-# =====================================
+# ====================================
 st.markdown("""
 <div class="navbar">
     <div class="logo">
@@ -200,26 +193,26 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# =====================================
+# ====================================
 # LAYOUT
-# =====================================
-left_col, right_col = st.columns([1.3, 1])
+# ====================================
+left_col, right_col = st.columns([1.1, 1])
 
-# =====================================
-# LEFT SIDE
-# =====================================
+# ====================================
+# LEFT
+# ====================================
 with left_col:
 
     st.markdown('<div class="card">', unsafe_allow_html=True)
 
-    st.subheader("📷 Upload Gambar")
+    st.subheader("📤 Upload Gambar")
 
     uploaded_file = st.file_uploader(
-        "Pilih gambar uang Rupiah",
+        "Pilih gambar uang",
         type=["jpg", "jpeg", "png"]
     )
 
-    conf_threshold = st.slider(
+    conf = st.slider(
         "Confidence Threshold",
         0.0,
         1.0,
@@ -230,19 +223,19 @@ with left_col:
 
     if uploaded_file:
 
-        image = Image.open(uploaded_file)
+        preview = Image.open(uploaded_file)
 
         st.image(
-            image,
+            preview,
             caption="Preview Gambar",
             use_container_width=True
         )
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-# =====================================
-# RIGHT SIDE
-# =====================================
+# ====================================
+# RIGHT
+# ====================================
 with right_col:
 
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -259,7 +252,7 @@ with right_col:
 
             results = model(
                 image_np,
-                conf=conf_threshold,
+                conf=conf,
                 verbose=False
             )
 
@@ -273,9 +266,9 @@ with right_col:
 
         total_sheet = 0
 
-        # =========================
-        # LOOP DETECTION
-        # =========================
+        # ====================================
+        # DETECTION LOOP
+        # ====================================
         for box in results[0].boxes:
 
             cls_id = int(box.cls[0])
@@ -303,7 +296,7 @@ with right_col:
 
             total_sheet += 1
 
-            # BOX
+            # box
             x1, y1, x2, y2 = map(
                 int,
                 box.xyxy[0]
@@ -322,7 +315,7 @@ with right_col:
                 3
             )
 
-            # TEXT
+            # text
             cv2.putText(
                 img,
                 f"Rp{label}",
@@ -333,30 +326,32 @@ with right_col:
                 2
             )
 
-        # =================================
+        # ====================================
         # TOTAL BOX
-        # =================================
+        # ====================================
         st.markdown(f"""
-        <div class="result-box">
-            <div class="result-title">
+        <div class="total-box">
+
+            <div class="total-title">
                 Total Nilai Uang
             </div>
 
-            <div class="result-money">
+            <div class="total-money">
                 Rp {total_money:,.0f}
             </div>
 
             <div style="margin-top:8px;">
                 Total Lembar: {total_sheet}
             </div>
+
         </div>
         """, unsafe_allow_html=True)
 
         st.write("")
 
-        # =================================
+        # ====================================
         # DETAILS
-        # =================================
+        # ====================================
         if money_data:
 
             sorted_money = sorted(
@@ -384,13 +379,13 @@ with right_col:
 
         else:
 
-            st.warning("Tidak ada uang terdeteksi.")
+            st.warning("Tidak ada uang terdeteksi")
 
         st.write("")
 
-        # =================================
+        # ====================================
         # RESULT IMAGE
-        # =================================
+        # ====================================
         result_rgb = cv2.cvtColor(
             img,
             cv2.COLOR_BGR2RGB
@@ -398,32 +393,23 @@ with right_col:
 
         st.image(
             result_rgb,
-            caption="Hasil Deteksi AI",
+            caption="Hasil Deteksi",
             use_container_width=True
         )
 
     else:
 
-        st.markdown("""
-        <div class="empty-box">
-
-            <h3>Belum Ada Hasil</h3>
-
-            <p>
-                Upload gambar lalu klik
-                <b>Deteksi Sekarang</b>
-            </p>
-
-        </div>
-        """, unsafe_allow_html=True)
+        st.info(
+            "Upload gambar lalu klik Deteksi Sekarang"
+        )
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-# =====================================
+# ====================================
 # FOOTER
-# =====================================
+# ====================================
 st.markdown("""
 <div class="footer">
-    Dibuat dengan ❤️ menggunakan Streamlit & YOLOv8
+    Dibuat dengan ❤️ menggunakan YOLOv8 & Streamlit
 </div>
 """, unsafe_allow_html=True)
