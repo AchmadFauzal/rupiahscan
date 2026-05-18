@@ -9,50 +9,49 @@ from PIL import Image
 # CONFIG
 # ==========================================
 st.set_page_config(
-    page_title="RupiScan",
+    page_title="RupiScan Pro",
     page_icon="💰",
     layout="wide"
 )
 
 # ==========================================
-# CUSTOM CSS (UI MODERN)
+# CSS (FIXED DASHBOARD STYLE)
 # ==========================================
 st.markdown("""
 <style>
 
 .main {
-    background-color: #f5f7f9;
+    background-color: #f4f6f9;
 }
 
-.stMetric {
-    background-color: white;
-    padding: 15px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+.block-container {
+    padding-top: 2rem;
+    max-width: 1100px;
 }
 
-.stImage img {
-    border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.10);
+.card {
+    background: white;
+    padding: 18px;
+    border-radius: 14px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
 }
 
 .footer {
-    position: fixed;
-    left: 0;
-    bottom: 0;
-    width: 100%;
     text-align: center;
+    padding: 12px;
     color: gray;
-    padding: 10px;
-    background: white;
     font-size: 13px;
+}
+
+img {
+    border-radius: 12px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# LOAD MODEL
+# MODEL
 # ==========================================
 @st.cache_resource
 def load_model():
@@ -61,7 +60,7 @@ def load_model():
 model = load_model()
 
 # ==========================================
-# NOMINAL MAP
+# NOMINAL & COLOR
 # ==========================================
 nominal_map = {
     0: 1000,
@@ -73,23 +72,28 @@ nominal_map = {
     6: 100000
 }
 
+color_map = {
+    0: (255, 0, 0),
+    1: (0, 255, 0),
+    2: (0, 255, 255),
+    3: (0, 0, 255),
+    4: (128, 0, 128),
+    5: (0, 165, 255),
+    6: (255, 255, 0)
+}
+
 # ==========================================
 # SIDEBAR
 # ==========================================
 with st.sidebar:
-    st.title("💰 RupiScan")
-
-    st.info("AI untuk deteksi & menghitung uang Rupiah menggunakan YOLOv8")
-
-    mode = st.radio(
-        "Metode Input",
-        ["📂 Upload Gambar", "📸 Kamera"]
-    )
+    st.title("💰 RupiScan Pro")
+    st.info("Deteksi uang Rupiah pakai YOLOv8 (Laravel-like quality)")
+    mode = st.radio("Input", ["Upload", "Kamera"])
 
 # ==========================================
-# DETEKSI FUNCTION
+# DETECTION ENGINE (FIXED QUALITY)
 # ==========================================
-def process_image(image):
+def detect(image):
 
     results = model(image)
     boxes = results[0].boxes
@@ -98,8 +102,9 @@ def process_image(image):
 
     h, w = output.shape[:2]
 
-    box_thickness = max(2, int(w * 0.0025))
-    font_scale = max(0.5, w / 2200)
+    # FIX: scaling stabil seperti web canvas
+    box_thickness = 2
+    font_scale = 0.6
 
     for box in boxes:
 
@@ -109,13 +114,16 @@ def process_image(image):
         nominal = nominal_map.get(cls, 0)
         label = f"Rp {nominal:,}"
 
-        # bounding box kecil & clean
+        color = color_map.get(cls, (0, 255, 0))
+
+        # BOX (sharp seperti Laravel canvas)
         cv2.rectangle(
             output,
             (x1, y1),
             (x2, y2),
-            (0, 200, 0),
-            box_thickness
+            color,
+            box_thickness,
+            lineType=cv2.LINE_AA
         )
 
         (tw, th), _ = cv2.getTextSize(
@@ -125,25 +133,29 @@ def process_image(image):
             2
         )
 
-        # label background dinamis
+        # label bg
         cv2.rectangle(
             output,
-            (x1, y1 - th - 8),
-            (x1 + tw + 10, y1),
-            (0, 200, 0),
-            -1
+            (x1, y1 - th - 6),
+            (x1 + tw + 8, y1),
+            color,
+            -1,
+            lineType=cv2.LINE_AA
         )
 
+        # text
         cv2.putText(
             output,
             label,
-            (x1 + 5, y1 - 5),
+            (x1 + 4, y1 - 4),
             cv2.FONT_HERSHEY_SIMPLEX,
             font_scale,
-            (0, 0, 0),
-            2
+            (255, 255, 255),
+            2,
+            lineType=cv2.LINE_AA
         )
 
+    # hitung total
     classes = boxes.cls.cpu().numpy().astype(int)
     counter = Counter(classes)
 
@@ -163,78 +175,72 @@ def process_image(image):
             "subtotal": subtotal
         })
 
-    # resize output biar seimbang UI
-    output = cv2.resize(output, (0, 0), fx=0.85, fy=0.85)
-
     return output, details, total
 
 # ==========================================
 # TITLE
 # ==========================================
-st.title("💰 RupiScan AI")
-st.markdown("### Deteksi & Hitung Uang Rupiah Secara Otomatis")
+st.title("💰 RupiScan AI Pro")
+st.markdown("### Hasil Deteksi dibuat seperti dashboard Laravel (sharp & stabil)")
 
 st.divider()
 
 # ==========================================
 # INPUT
 # ==========================================
-source_img = None
+img = None
 
-if mode == "📂 Upload Gambar":
-    uploaded = st.file_uploader("Upload gambar", type=["jpg", "jpeg", "png"])
-
-    if uploaded:
-        source_img = Image.open(uploaded)
+if mode == "Upload":
+    up = st.file_uploader("Upload gambar", type=["jpg", "jpeg", "png"])
+    if up:
+        img = Image.open(up)
 
 else:
-    camera = st.camera_input("Ambil foto")
-
-    if camera:
-        source_img = Image.open(camera)
+    cam = st.camera_input("Ambil gambar")
+    if cam:
+        img = Image.open(cam)
 
 # ==========================================
 # PROCESS
 # ==========================================
-if source_img is not None:
+if img is not None:
 
-    source_img = source_img.convert("RGB")
-    image_np = np.array(source_img)
+    img = img.convert("RGB")
+    image_np = np.array(img)
 
-    with st.spinner("🔍 Mendeteksi uang..."):
-        result_img, details, total = process_image(image_np)
+    with st.spinner("Detecting..."):
+        result, details, total = detect(image_np)
 
-    # ==========================================
-    # LAYOUT BALANCED
-    # ==========================================
-    col1, col2 = st.columns(2)
+    # FIX: jangan auto resize Streamlit
+    result = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
+
+    col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.subheader("📷 Preview")
-        st.image(image_np, use_container_width=True)
+        st.markdown("### 📷 Original")
+        st.image(image_np, width=500)
 
     with col2:
-        st.subheader("🎯 Hasil Deteksi")
+        st.markdown("### 🎯 Detection Result")
 
-        st.metric("💵 Total Uang", f"Rp {total:,.0f}")
+        st.metric("Total Uang", f"Rp {total:,.0f}")
 
-        st.image(result_img, use_container_width=True)
+        # FIX LARAVEL STYLE: fixed width (bukan container width)
+        st.image(result, width=500)
 
         st.write("---")
 
         if details:
             for d in details:
-                with st.expander(f"Rp {d['nominal']:,}"):
-                    st.write(f"Jumlah: {d['jumlah']} lembar")
-                    st.write(f"Subtotal: Rp {d['subtotal']:,}")
+                st.write(f"💵 Rp {d['nominal']:,} → {d['jumlah']} lembar")
         else:
-            st.warning("Tidak ada uang terdeteksi")
+            st.warning("Tidak terdeteksi")
 
 # ==========================================
 # FOOTER
 # ==========================================
 st.markdown("""
 <div class="footer">
-    RupiScan AI • YOLOv8 Object Detection
+    RupiScan Pro • Laravel-like Detection UI
 </div>
 """, unsafe_allow_html=True)
