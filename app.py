@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 from PIL import Image
 from collections import defaultdict
+import pandas as pd
 import os
 
 # =====================================
@@ -16,31 +17,33 @@ st.set_page_config(
 )
 
 # =====================================
-# CSS
+# CUSTOM CSS
 # =====================================
 st.markdown("""
 <style>
 
-.main {
-    background: #f5f7fb;
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Poppins', sans-serif;
 }
 
-.block-container {
-    padding-top: 2rem;
-    padding-bottom: 2rem;
+/* BACKGROUND */
+.stApp {
+    background: #f5f7fb;
 }
 
 /* NAVBAR */
 .navbar {
     background: white;
-    padding: 18px 28px;
-    border-radius: 18px;
+    padding: 20px 30px;
+    border-radius: 20px;
     margin-bottom: 25px;
-    box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
 }
 
 .logo {
-    font-size: 32px;
+    font-size: 34px;
     font-weight: 700;
 }
 
@@ -48,58 +51,80 @@ st.markdown("""
     color: #7c3aed;
 }
 
+.subtitle {
+    color: #6b7280;
+    margin-top: 5px;
+}
+
 /* CARD */
 .card {
     background: white;
-    padding: 22px;
-    border-radius: 18px;
-    box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+    padding: 25px;
+    border-radius: 22px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
     border: 1px solid #ececec;
 }
 
 /* TITLE */
-.title {
+.section-title {
     font-size: 24px;
     font-weight: 700;
-    margin-bottom: 18px;
+    margin-bottom: 20px;
 }
 
-/* TABLE */
-.result-table {
+/* BUTTON */
+.stButton > button {
     width: 100%;
-    border-collapse: collapse;
-    margin-top: 15px;
-}
-
-.result-table th {
-    background: #f3f4f6;
-    padding: 12px;
-    text-align: left;
-}
-
-.result-table td {
-    padding: 12px;
-    border-bottom: 1px solid #e5e7eb;
-}
-
-/* TOTAL BOX */
-.total-box {
-    margin-top: 20px;
+    border: none;
+    padding: 14px;
+    border-radius: 14px;
     background: linear-gradient(135deg,#7c3aed,#8b5cf6);
     color: white;
-    padding: 20px;
+    font-weight: 600;
+    font-size: 16px;
+    transition: 0.3s;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px);
+    opacity: 0.95;
+}
+
+/* METRIC */
+.metric-box {
+    background: linear-gradient(135deg,#7c3aed,#8b5cf6);
+    padding: 22px;
     border-radius: 18px;
+    color: white;
+    margin-top: 20px;
 }
 
-.total-money {
-    font-size: 32px;
+.metric-title {
+    font-size: 15px;
+    opacity: 0.9;
+}
+
+.metric-money {
+    font-size: 34px;
     font-weight: bold;
+    margin-top: 10px;
 }
 
+.metric-sheet {
+    margin-top: 10px;
+    font-size: 15px;
+}
+
+/* FOOTER */
 .footer {
     text-align: center;
-    margin-top: 30px;
+    margin-top: 40px;
     color: gray;
+}
+
+/* IMAGE */
+img {
+    border-radius: 16px;
 }
 
 </style>
@@ -113,8 +138,8 @@ st.markdown("""
     <div class="logo">
         💰 Rupi<span>Scan</span>
     </div>
-    <div style="color:gray;">
-        Deteksi dan Hitung Uang Rupiah
+    <div class="subtitle">
+        Deteksi dan Hitung Uang Rupiah Menggunakan AI YOLOv8
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -126,17 +151,18 @@ st.markdown("""
 def load_model():
 
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
     model_path = os.path.join(BASE_DIR, "best.pt")
 
     if not os.path.exists(model_path):
-        st.error(f"Model tidak ditemukan: {model_path}")
+        st.error(f"❌ Model tidak ditemukan: {model_path}")
         st.stop()
 
     try:
         return YOLO(model_path)
 
     except Exception as e:
-        st.error(f"Gagal load model: {e}")
+        st.error(f"❌ Gagal load model: {e}")
         st.stop()
 
 model = load_model()
@@ -155,7 +181,7 @@ colors = {
 }
 
 # =====================================
-# DETECT FUNCTION
+# DETECTION FUNCTION
 # =====================================
 def detect_money(image):
 
@@ -209,7 +235,7 @@ def detect_money(image):
             f"Rp{label}",
             (x1, y1 - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
+            0.9,
             color,
             2
         )
@@ -219,30 +245,33 @@ def detect_money(image):
 # =====================================
 # LAYOUT
 # =====================================
-col1, col2 = st.columns([1.2,1])
+col1, col2 = st.columns([1.1, 1])
 
 # =====================================
-# PREVIEW
+# LEFT SIDE
 # =====================================
 with col1:
 
     st.markdown("""
     <div class="card">
-        <div class="title">📷 Preview</div>
+        <div class="section-title">
+            📷 Preview Gambar
+        </div>
     """, unsafe_allow_html=True)
 
-    mode = st.radio(
-        "Pilih Input",
-        ["Upload Gambar", "Kamera"]
+    input_mode = st.radio(
+        "Pilih Metode Input",
+        ["Upload Gambar", "Kamera"],
+        horizontal=True
     )
 
     source_img = None
 
-    if mode == "Upload Gambar":
+    if input_mode == "Upload Gambar":
 
         uploaded_file = st.file_uploader(
-            "Pilih gambar",
-            type=["jpg","jpeg","png"]
+            "Pilih gambar uang rupiah",
+            type=["jpg", "jpeg", "png"]
         )
 
         if uploaded_file:
@@ -259,34 +288,37 @@ with col1:
 
         st.image(
             source_img,
-            use_container_width=True
+            use_container_width=True,
+            caption="Preview Gambar"
         )
 
-    detect_btn = st.button("🔍 Deteksi")
+    detect_btn = st.button("🔍 Deteksi Sekarang")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 # =====================================
-# RESULT
+# RIGHT SIDE
 # =====================================
 with col2:
 
     st.markdown("""
     <div class="card">
-        <div class="title">💵 Hasil Deteksi</div>
+        <div class="section-title">
+            💵 Hasil Deteksi
+        </div>
     """, unsafe_allow_html=True)
 
     if detect_btn:
 
         if source_img is None:
 
-            st.warning("Upload gambar atau gunakan kamera.")
+            st.warning("⚠️ Upload gambar atau gunakan kamera terlebih dahulu.")
 
         else:
 
             image_np = np.array(source_img)
 
-            with st.spinner("Sedang mendeteksi..."):
+            with st.spinner("Sedang mendeteksi uang..."):
 
                 result_img, money_data, total_money, total_sheet = detect_money(image_np)
 
@@ -296,17 +328,10 @@ with col2:
 
             else:
 
-                table_html = """
-                <table class="result-table">
-                    <thead>
-                        <tr>
-                            <th>Pecahan</th>
-                            <th>Jumlah</th>
-                            <th>Subtotal</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                """
+                # =========================
+                # TABLE DATA
+                # =========================
+                table_data = []
 
                 for money in sorted(
                     money_data.keys(),
@@ -316,26 +341,31 @@ with col2:
 
                     item = money_data[money]
 
-                    table_html += f"""
-                    <tr>
-                        <td>Rp {int(money):,}</td>
-                        <td>{item['count']}</td>
-                        <td>Rp {item['subtotal']:,}</td>
-                    </tr>
-                    """
+                    table_data.append({
+                        "Pecahan": f"Rp {int(money):,}",
+                        "Jumlah": item["count"],
+                        "Subtotal": f"Rp {item['subtotal']:,}"
+                    })
 
-                table_html += "</tbody></table>"
+                df = pd.DataFrame(table_data)
 
-                st.markdown(
-                    table_html,
-                    unsafe_allow_html=True
-                )
+                st.table(df)
 
+                # =========================
+                # TOTAL BOX
+                # =========================
                 st.markdown(f"""
-                <div class="total-box">
-                    <div>Total Lembar: {total_sheet}</div>
-                    <div class="total-money">
+                <div class="metric-box">
+                    <div class="metric-title">
+                        Total Uang Terdeteksi
+                    </div>
+
+                    <div class="metric-money">
                         Rp {total_money:,}
+                    </div>
+
+                    <div class="metric-sheet">
+                        Total Lembar: {total_sheet}
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -358,6 +388,6 @@ with col2:
 # =====================================
 st.markdown("""
 <div class="footer">
-    Dibuat dengan Streamlit + YOLOv8
+    Dibuat dengan ❤️ menggunakan Streamlit & YOLOv8
 </div>
 """, unsafe_allow_html=True)
