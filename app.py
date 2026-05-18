@@ -31,6 +31,11 @@ st.markdown("""
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
+.preview-box {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
 .footer {
     position: fixed;
     left: 0;
@@ -72,7 +77,7 @@ nominal_map = {
 # ==========================================
 with st.sidebar:
 
-    st.title("💰 Rupiah Vision AI")
+    st.title("💰 RupiScan")
 
     st.info(
         "Aplikasi AI untuk mendeteksi dan menghitung nominal uang Rupiah menggunakan YOLOv8."
@@ -88,20 +93,16 @@ with st.sidebar:
 # ==========================================
 def process_image(image):
 
-    # Prediksi YOLO
     results = model(image)
 
     boxes = results[0].boxes
 
-    # ==========================================
-    # PENTING:
-    # JANGAN UBAH WARNA GAMBAR
-    # ==========================================
-
-    # Salin gambar asli
+    # Copy gambar asli agar warna tetap normal
     output_image = image.copy()
 
-    # Ambil bounding box manual
+    # ==========================================
+    # DRAW BOUNDING BOX MANUAL
+    # ==========================================
     for box in boxes:
 
         x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -114,7 +115,7 @@ def process_image(image):
 
         label = f"Rp {nominal:,}"
 
-        # Bounding box hijau
+        # Bounding Box
         cv2.rectangle(
             output_image,
             (x1, y1),
@@ -126,7 +127,7 @@ def process_image(image):
         # Background label
         cv2.rectangle(
             output_image,
-            (x1, y1 - 35),
+            (x1, y1 - 40),
             (x1 + 180, y1),
             (0, 255, 0),
             -1
@@ -136,7 +137,7 @@ def process_image(image):
         cv2.putText(
             output_image,
             label,
-            (x1 + 10, y1 - 10),
+            (x1 + 10, y1 - 12),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
             (0, 0, 0),
@@ -146,7 +147,6 @@ def process_image(image):
     # ==========================================
     # HITUNG TOTAL
     # ==========================================
-
     classes = boxes.cls.cpu().numpy().astype(int)
 
     counter = Counter(classes)
@@ -176,7 +176,7 @@ def process_image(image):
 # ==========================================
 # MAIN CONTENT
 # ==========================================
-st.title("💰 Rupiah Vision AI")
+st.title("💰 RupiScan")
 
 st.markdown(
     "### Solusi Cerdas Menghitung Uang Rupiah Secara Cepat dan Akurat"
@@ -213,24 +213,10 @@ else:
 # ==========================================
 if source_img is not None:
 
-    # Pastikan RGB agar tidak error
+    # Fix RGBA → RGB
     source_img = source_img.convert("RGB")
 
-    # Convert ke numpy TANPA mengubah warna
     image_np = np.array(source_img)
-
-    # ==========================================
-    # PREVIEW GAMBAR ASLI
-    # ==========================================
-    st.subheader("🖼️ Preview Gambar Asli")
-
-    st.image(
-        image_np,
-        caption="Gambar Sebelum Deteksi",
-        use_container_width=True
-    )
-
-    st.write("")
 
     # ==========================================
     # DETEKSI
@@ -240,27 +226,39 @@ if source_img is not None:
         result_img, details, total = process_image(image_np)
 
     # ==========================================
-    # HASIL
+    # LAYOUT
     # ==========================================
-    col1, col2 = st.columns([3, 2])
+    left_col, right_col = st.columns([1, 2])
 
-    with col1:
+    # ==========================================
+    # PREVIEW KIRI
+    # ==========================================
+    with left_col:
 
-        st.subheader("🎯 Hasil Deteksi Bounding Box")
+        st.subheader("🖼️ Preview")
 
         st.image(
-            result_img,
-            caption="Gambar Setelah Deteksi",
+            image_np,
+            caption="Gambar Asli",
             use_container_width=True
         )
 
-    with col2:
+    # ==========================================
+    # HASIL KANAN
+    # ==========================================
+    with right_col:
 
-        st.subheader("📊 Ringkasan")
+        st.subheader("🎯 Hasil Deteksi")
 
         st.metric(
             label="💵 Total Uang",
             value=f"Rp {total:,.0f}"
+        )
+
+        st.image(
+            result_img,
+            caption="Hasil Bounding Box",
+            use_container_width=True
         )
 
         st.write("---")
