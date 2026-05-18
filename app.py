@@ -6,7 +6,7 @@ from collections import Counter
 from PIL import Image
 
 # ==========================================
-# KONFIGURASI HALAMAN
+# CONFIG
 # ==========================================
 st.set_page_config(
     page_title="RupiScan",
@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# CUSTOM CSS
+# CUSTOM CSS (UI MODERN)
 # ==========================================
 st.markdown("""
 <style>
@@ -31,9 +31,9 @@ st.markdown("""
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
-.preview-box {
+.stImage img {
     border-radius: 12px;
-    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.10);
 }
 
 .footer {
@@ -45,6 +45,7 @@ st.markdown("""
     color: gray;
     padding: 10px;
     background: white;
+    font-size: 13px;
 }
 
 </style>
@@ -60,7 +61,7 @@ def load_model():
 model = load_model()
 
 # ==========================================
-# MAPPING NOMINAL
+# NOMINAL MAP
 # ==========================================
 nominal_map = {
     0: 1000,
@@ -76,12 +77,9 @@ nominal_map = {
 # SIDEBAR
 # ==========================================
 with st.sidebar:
-
     st.title("💰 RupiScan")
 
-    st.info(
-        "Aplikasi AI untuk mendeteksi dan menghitung nominal uang Rupiah menggunakan YOLOv8."
-    )
+    st.info("AI untuk deteksi & menghitung uang Rupiah menggunakan YOLOv8")
 
     mode = st.radio(
         "Metode Input",
@@ -89,80 +87,74 @@ with st.sidebar:
     )
 
 # ==========================================
-# FUNGSI DETEKSI
+# DETEKSI FUNCTION
 # ==========================================
 def process_image(image):
 
     results = model(image)
-
     boxes = results[0].boxes
 
-    # Copy gambar asli agar warna tetap normal
-    output_image = image.copy()
+    output = image.copy()
 
-    # ==========================================
-    # DRAW BOUNDING BOX MANUAL
-    # ==========================================
+    h, w = output.shape[:2]
+
+    box_thickness = max(2, int(w * 0.0025))
+    font_scale = max(0.5, w / 2200)
+
     for box in boxes:
 
         x1, y1, x2, y2 = map(int, box.xyxy[0])
-
         cls = int(box.cls[0])
 
-        conf = float(box.conf[0])
-
         nominal = nominal_map.get(cls, 0)
-
         label = f"Rp {nominal:,}"
 
-        # Bounding Box
+        # bounding box kecil & clean
         cv2.rectangle(
-            output_image,
+            output,
             (x1, y1),
             (x2, y2),
-            (0, 255, 0),
-            3
+            (0, 200, 0),
+            box_thickness
         )
 
-        # Background label
+        (tw, th), _ = cv2.getTextSize(
+            label,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale,
+            2
+        )
+
+        # label background dinamis
         cv2.rectangle(
-            output_image,
-            (x1, y1 - 40),
-            (x1 + 180, y1),
-            (0, 255, 0),
+            output,
+            (x1, y1 - th - 8),
+            (x1 + tw + 10, y1),
+            (0, 200, 0),
             -1
         )
 
-        # Text label
         cv2.putText(
-            output_image,
+            output,
             label,
-            (x1 + 10, y1 - 12),
+            (x1 + 5, y1 - 5),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
+            font_scale,
             (0, 0, 0),
             2
         )
 
-    # ==========================================
-    # HITUNG TOTAL
-    # ==========================================
     classes = boxes.cls.cpu().numpy().astype(int)
-
     counter = Counter(classes)
 
     total = 0
-
     details = []
 
-    for kelas in sorted(counter.keys()):
+    for k in sorted(counter.keys()):
+        jumlah = counter[k]
+        nominal = nominal_map.get(k, 0)
 
-        jumlah = counter[kelas]
-
-        nominal = nominal_map.get(kelas, 0)
-
-        subtotal = nominal * jumlah
-
+        subtotal = jumlah * nominal
         total += subtotal
 
         details.append({
@@ -171,123 +163,78 @@ def process_image(image):
             "subtotal": subtotal
         })
 
-    return output_image, details, total
+    # resize output biar seimbang UI
+    output = cv2.resize(output, (0, 0), fx=0.85, fy=0.85)
+
+    return output, details, total
 
 # ==========================================
-# MAIN CONTENT
+# TITLE
 # ==========================================
-st.title("💰 RupiScan")
-
-st.markdown(
-    "### Solusi Cerdas Menghitung Uang Rupiah Secara Cepat dan Akurat"
-)
+st.title("💰 RupiScan AI")
+st.markdown("### Deteksi & Hitung Uang Rupiah Secara Otomatis")
 
 st.divider()
-
-source_img = None
 
 # ==========================================
 # INPUT
 # ==========================================
+source_img = None
+
 if mode == "📂 Upload Gambar":
+    uploaded = st.file_uploader("Upload gambar", type=["jpg", "jpeg", "png"])
 
-    uploaded_file = st.file_uploader(
-        "Upload gambar uang Rupiah",
-        type=["jpg", "jpeg", "png"]
-    )
-
-    if uploaded_file:
-
-        source_img = Image.open(uploaded_file)
+    if uploaded:
+        source_img = Image.open(uploaded)
 
 else:
+    camera = st.camera_input("Ambil foto")
 
-    camera_image = st.camera_input("Ambil Foto Uang")
-
-    if camera_image:
-
-        source_img = Image.open(camera_image)
+    if camera:
+        source_img = Image.open(camera)
 
 # ==========================================
-# JIKA ADA GAMBAR
+# PROCESS
 # ==========================================
 if source_img is not None:
 
-    # Fix RGBA → RGB
     source_img = source_img.convert("RGB")
-
     image_np = np.array(source_img)
 
-    # ==========================================
-    # DETEKSI
-    # ==========================================
-    with st.spinner("🔍 Sedang mendeteksi uang..."):
-
+    with st.spinner("🔍 Mendeteksi uang..."):
         result_img, details, total = process_image(image_np)
 
     # ==========================================
-    # LAYOUT
+    # LAYOUT BALANCED
     # ==========================================
-    left_col, right_col = st.columns([1, 2])
+    col1, col2 = st.columns(2)
 
-    # ==========================================
-    # PREVIEW KIRI
-    # ==========================================
-    with left_col:
+    with col1:
+        st.subheader("📷 Preview")
+        st.image(image_np, use_container_width=True)
 
-        st.subheader("🖼️ Preview")
-
-        st.image(
-            image_np,
-            caption="Gambar Asli",
-            use_container_width=True
-        )
-
-    # ==========================================
-    # HASIL KANAN
-    # ==========================================
-    with right_col:
-
+    with col2:
         st.subheader("🎯 Hasil Deteksi")
 
-        st.metric(
-            label="💵 Total Uang",
-            value=f"Rp {total:,.0f}"
-        )
+        st.metric("💵 Total Uang", f"Rp {total:,.0f}")
 
-        st.image(
-            result_img,
-            caption="Hasil Bounding Box",
-            use_container_width=True
-        )
+        st.image(result_img, use_container_width=True)
 
         st.write("---")
 
         if details:
-
-            for item in details:
-
-                with st.expander(f"💰 Rp {item['nominal']:,}"):
-
-                    st.write(
-                        f"Jumlah : {item['jumlah']} lembar"
-                    )
-
-                    st.write(
-                        f"Subtotal : Rp {item['subtotal']:,}"
-                    )
-
+            for d in details:
+                with st.expander(f"Rp {d['nominal']:,}"):
+                    st.write(f"Jumlah: {d['jumlah']} lembar")
+                    st.write(f"Subtotal: Rp {d['subtotal']:,}")
         else:
-
-            st.warning(
-                "Uang tidak terdeteksi."
-            )
+            st.warning("Tidak ada uang terdeteksi")
 
 # ==========================================
 # FOOTER
 # ==========================================
 st.markdown("""
 <div class="footer">
-    Dibuat oleh Kelompok Ibu Kota Jawa Barat
+    RupiScan AI • YOLOv8 Object Detection
 </div>
 """, unsafe_allow_html=True)
