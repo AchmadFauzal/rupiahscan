@@ -2,16 +2,15 @@ import streamlit as st
 from ultralytics import YOLO
 import cv2
 import numpy as np
+from collections import Counter
 from PIL import Image
-from collections import defaultdict
-import pandas as pd
 import os
 
 # =====================================
 # PAGE CONFIG
 # =====================================
 st.set_page_config(
-    page_title="RupiScan",
+    page_title="RupiScan AI",
     page_icon="💰",
     layout="wide"
 )
@@ -28,56 +27,66 @@ html, body, [class*="css"] {
     font-family: 'Poppins', sans-serif;
 }
 
-/* BACKGROUND */
 .stApp {
-    background: #f5f7fb;
+    background-color: #f5f7fb;
 }
 
-/* NAVBAR */
-.navbar {
-    background: white;
-    padding: 20px 30px;
-    border-radius: 20px;
-    margin-bottom: 25px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-}
-
-.logo {
-    font-size: 34px;
+/* TITLE */
+.main-title {
+    font-size: 42px;
     font-weight: 700;
+    color: #111827;
+    margin-bottom: 5px;
 }
 
-.logo span {
+.main-title span {
     color: #7c3aed;
 }
 
 .subtitle {
     color: #6b7280;
-    margin-top: 5px;
+    font-size: 18px;
+    margin-bottom: 20px;
+}
+
+/* SIDEBAR */
+section[data-testid="stSidebar"] {
+    background-color: white;
+    border-right: 1px solid #ececec;
+}
+
+/* METRIC */
+[data-testid="metric-container"] {
+    background: linear-gradient(135deg,#7c3aed,#8b5cf6);
+    border-radius: 18px;
+    padding: 20px;
+    color: white;
+    box-shadow: 0 4px 15px rgba(124,58,237,0.2);
+}
+
+[data-testid="metric-container"] label {
+    color: white !important;
+}
+
+[data-testid="metric-container"] div {
+    color: white !important;
 }
 
 /* CARD */
-.card {
+.custom-card {
     background: white;
-    padding: 25px;
-    border-radius: 22px;
+    padding: 20px;
+    border-radius: 20px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.05);
     border: 1px solid #ececec;
 }
 
-/* TITLE */
-.section-title {
-    font-size: 24px;
-    font-weight: 700;
-    margin-bottom: 20px;
-}
-
 /* BUTTON */
-.stButton > button {
+.stButton>button {
     width: 100%;
     border: none;
-    padding: 14px;
     border-radius: 14px;
+    padding: 12px;
     background: linear-gradient(135deg,#7c3aed,#8b5cf6);
     color: white;
     font-weight: 600;
@@ -85,303 +94,257 @@ html, body, [class*="css"] {
     transition: 0.3s;
 }
 
-.stButton > button:hover {
+.stButton>button:hover {
     transform: translateY(-2px);
     opacity: 0.95;
-}
-
-/* METRIC */
-.metric-box {
-    background: linear-gradient(135deg,#7c3aed,#8b5cf6);
-    padding: 22px;
-    border-radius: 18px;
-    color: white;
-    margin-top: 20px;
-}
-
-.metric-title {
-    font-size: 15px;
-    opacity: 0.9;
-}
-
-.metric-money {
-    font-size: 34px;
-    font-weight: bold;
-    margin-top: 10px;
-}
-
-.metric-sheet {
-    margin-top: 10px;
-    font-size: 15px;
 }
 
 /* FOOTER */
 .footer {
     text-align: center;
-    margin-top: 40px;
     color: gray;
-}
-
-/* IMAGE */
-img {
-    border-radius: 16px;
+    margin-top: 40px;
+    padding-bottom: 20px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # =====================================
-# NAVBAR
-# =====================================
-st.markdown("""
-<div class="navbar">
-    <div class="logo">
-        💰 Rupi<span>Scan</span>
-    </div>
-    <div class="subtitle">
-        Deteksi dan Hitung Uang Rupiah Menggunakan AI YOLOv8
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# =====================================
 # LOAD MODEL
 # =====================================
 @st.cache_resource
-def load_model():
+def load_yolo_model():
 
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     model_path = os.path.join(BASE_DIR, "best.pt")
 
     if not os.path.exists(model_path):
-        st.error(f"❌ Model tidak ditemukan: {model_path}")
+        st.error(f"Model tidak ditemukan: {model_path}")
         st.stop()
 
     try:
         return YOLO(model_path)
 
     except Exception as e:
-        st.error(f"❌ Gagal load model: {e}")
+        st.error(f"Gagal load model: {e}")
         st.stop()
 
-model = load_model()
+model = load_yolo_model()
 
 # =====================================
-# COLORS
+# NOMINAL MAP
 # =====================================
-colors = {
-    "1000": (255, 0, 0),
-    "2000": (0, 255, 0),
-    "5000": (0, 255, 255),
-    "10000": (255, 255, 0),
-    "20000": (255, 0, 255),
-    "50000": (0, 128, 255),
-    "100000": (0, 0, 255)
+nominal_map = {
+    0: 1000,
+    1: 2000,
+    2: 5000,
+    3: 10000,
+    4: 20000,
+    5: 50000,
+    6: 100000
 }
 
 # =====================================
-# DETECTION FUNCTION
+# SIDEBAR
 # =====================================
-def detect_money(image):
+with st.sidebar:
 
-    results = model(image, verbose=False)
-
-    img = image.copy()
-
-    names = model.names
-
-    money_data = defaultdict(lambda: {
-        "count": 0,
-        "subtotal": 0
-    })
-
-    total_money = 0
-    total_sheet = 0
-
-    for box in results[0].boxes:
-
-        cls_id = int(box.cls[0])
-
-        label = names[cls_id]
-
-        try:
-            nominal = int(label)
-        except:
-            continue
-
-        money_data[label]["count"] += 1
-        money_data[label]["subtotal"] += nominal
-
-        total_money += nominal
-        total_sheet += 1
-
-        # BOX
-        x1, y1, x2, y2 = map(int, box.xyxy[0])
-
-        color = colors.get(label, (0,255,0))
-
-        cv2.rectangle(
-            img,
-            (x1, y1),
-            (x2, y2),
-            color,
-            3
-        )
-
-        # TEXT
-        cv2.putText(
-            img,
-            f"Rp{label}",
-            (x1, y1 - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.9,
-            color,
-            2
-        )
-
-    return img, money_data, total_money, total_sheet
-
-# =====================================
-# LAYOUT
-# =====================================
-col1, col2 = st.columns([1.1, 1])
-
-# =====================================
-# LEFT SIDE
-# =====================================
-with col1:
-
-    st.markdown("""
-    <div class="card">
-        <div class="section-title">
-            📷 Preview Gambar
-        </div>
-    """, unsafe_allow_html=True)
-
-    input_mode = st.radio(
-        "Pilih Metode Input",
-        ["Upload Gambar", "Kamera"],
-        horizontal=True
+    st.image(
+        "https://www.bi.go.id/id/fungsi-utama/pengedaran-uang/penerbitan-uang/Uang%20Tahun%20Emisi/Uang%20Kertas%20TE%202022.jpg",
+        use_container_width=True
     )
 
-    source_img = None
+    st.title("⚙️ Pengaturan")
 
-    if input_mode == "Upload Gambar":
+    mode = st.radio(
+        "Metode Input",
+        ["📂 Upload Gambar", "📸 Kamera"]
+    )
 
-        uploaded_file = st.file_uploader(
-            "Pilih gambar uang rupiah",
-            type=["jpg", "jpeg", "png"]
-        )
+    st.info(
+        "Aplikasi AI untuk mendeteksi dan menghitung uang Rupiah menggunakan YOLOv8."
+    )
 
-        if uploaded_file:
-            source_img = Image.open(uploaded_file)
+    conf_threshold = st.slider(
+        "Confidence Threshold",
+        0.0,
+        1.0,
+        0.4
+    )
 
-    else:
+# =====================================
+# PROCESS FUNCTION
+# =====================================
+def process_image(image):
 
-        camera_image = st.camera_input("Ambil Foto")
+    results = model(
+        image,
+        conf=conf_threshold,
+        verbose=False
+    )
 
-        if camera_image:
-            source_img = Image.open(camera_image)
+    boxes = results[0].boxes
 
-    if source_img is not None:
+    img_plotted = results[0].plot(
+        labels=True,
+        conf=True
+    )
+
+    img_rgb = cv2.cvtColor(
+        img_plotted,
+        cv2.COLOR_BGR2RGB
+    )
+
+    classes = boxes.cls.cpu().numpy().astype(int)
+
+    counter = Counter(classes)
+
+    total = 0
+
+    details = []
+
+    for kelas in sorted(
+        counter.keys(),
+        reverse=True
+    ):
+
+        jumlah = counter[kelas]
+
+        nominal = nominal_map.get(kelas, 0)
+
+        subtotal = nominal * jumlah
+
+        total += subtotal
+
+        details.append({
+            "nominal": nominal,
+            "jumlah": jumlah,
+            "subtotal": subtotal
+        })
+
+    return img_rgb, details, total
+
+# =====================================
+# HEADER
+# =====================================
+st.markdown("""
+<div class="main-title">
+    💰 Rupi<span>Scan</span> AI
+</div>
+
+<div class="subtitle">
+    Solusi Cerdas Deteksi dan Hitung Uang Rupiah Secara Otomatis
+</div>
+""", unsafe_allow_html=True)
+
+st.divider()
+
+# =====================================
+# INPUT IMAGE
+# =====================================
+source_img = None
+
+if mode == "📂 Upload Gambar":
+
+    uploaded_file = st.file_uploader(
+        "Pilih file gambar...",
+        type=["jpg", "jpeg", "png"]
+    )
+
+    if uploaded_file:
+
+        source_img = Image.open(uploaded_file)
+
+else:
+
+    camera_image = st.camera_input(
+        "Ambil Foto Uang"
+    )
+
+    if camera_image:
+
+        source_img = Image.open(camera_image)
+
+# =====================================
+# MAIN CONTENT
+# =====================================
+if source_img is not None:
+
+    col1, col2 = st.columns([3,2])
+
+    image_np = np.array(source_img)
+
+    with st.spinner("🔍 Sedang menganalisis gambar..."):
+
+        result_img, details, total = process_image(image_np)
+
+    # =================================
+    # LEFT
+    # =================================
+    with col1:
+
+        st.markdown("""
+        <div class="custom-card">
+        """, unsafe_allow_html=True)
+
+        st.subheader("🖼️ Hasil Deteksi")
 
         st.image(
-            source_img,
+            result_img,
             use_container_width=True,
-            caption="Preview Gambar"
+            caption="Hasil Pemindaian AI"
         )
 
-    detect_btn = st.button("🔍 Deteksi Sekarang")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    # =================================
+    # RIGHT
+    # =================================
+    with col2:
 
-# =====================================
-# RIGHT SIDE
-# =====================================
-with col2:
+        st.markdown("""
+        <div class="custom-card">
+        """, unsafe_allow_html=True)
 
-    st.markdown("""
-    <div class="card">
-        <div class="section-title">
-            💵 Hasil Deteksi
-        </div>
-    """, unsafe_allow_html=True)
+        st.subheader("📊 Ringkasan")
 
-    if detect_btn:
+        st.metric(
+            label="💵 Total Nilai Uang",
+            value=f"Rp {total:,.0f}"
+        )
 
-        if source_img is None:
+        st.write("")
 
-            st.warning("⚠️ Upload gambar atau gunakan kamera terlebih dahulu.")
+        if details:
+
+            for item in details:
+
+                with st.expander(f"💸 Rp {item['nominal']:,}"):
+
+                    st.write(
+                        f"**Jumlah:** {item['jumlah']} lembar"
+                    )
+
+                    st.write(
+                        f"**Subtotal:** Rp {item['subtotal']:,}"
+                    )
 
         else:
 
-            image_np = np.array(source_img)
+            st.warning(
+                "Uang tidak terdeteksi. "
+                "Coba atur threshold atau gunakan gambar yang lebih jelas."
+            )
 
-            with st.spinner("Sedang mendeteksi uang..."):
+        st.markdown("</div>", unsafe_allow_html=True)
 
-                result_img, money_data, total_money, total_sheet = detect_money(image_np)
+else:
 
-            if len(money_data) == 0:
-
-                st.warning("Tidak ada uang terdeteksi.")
-
-            else:
-
-                # =========================
-                # TABLE DATA
-                # =========================
-                table_data = []
-
-                for money in sorted(
-                    money_data.keys(),
-                    key=lambda x: int(x),
-                    reverse=True
-                ):
-
-                    item = money_data[money]
-
-                    table_data.append({
-                        "Pecahan": f"Rp {int(money):,}",
-                        "Jumlah": item["count"],
-                        "Subtotal": f"Rp {item['subtotal']:,}"
-                    })
-
-                df = pd.DataFrame(table_data)
-
-                st.table(df)
-
-                # =========================
-                # TOTAL BOX
-                # =========================
-                st.markdown(f"""
-                <div class="metric-box">
-                    <div class="metric-title">
-                        Total Uang Terdeteksi
-                    </div>
-
-                    <div class="metric-money">
-                        Rp {total_money:,}
-                    </div>
-
-                    <div class="metric-sheet">
-                        Total Lembar: {total_sheet}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-                st.markdown("### 🖼️ Gambar Hasil")
-
-                st.image(
-                    result_img,
-                    use_container_width=True
-                )
-
-    else:
-
-        st.info("Belum ada hasil deteksi.")
-
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.info(
+        "📷 Upload gambar atau gunakan kamera untuk memulai deteksi."
+    )
 
 # =====================================
 # FOOTER
