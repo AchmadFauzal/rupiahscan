@@ -6,27 +6,27 @@ from collections import Counter
 from PIL import Image
 
 # ==========================================
-# CONFIG
+# PAGE CONFIG
 # ==========================================
 st.set_page_config(
-    page_title="RupiScan Pro",
+    page_title="RupiScan Dashboard",
     page_icon="💰",
     layout="wide"
 )
 
 # ==========================================
-# CSS (FIXED DASHBOARD STYLE)
+# MODERN UI CSS (DASHBOARD STYLE)
 # ==========================================
 st.markdown("""
 <style>
 
-.main {
-    background-color: #f4f6f9;
+body {
+    background-color: #f5f7fb;
 }
 
 .block-container {
-    padding-top: 2rem;
-    max-width: 1100px;
+    padding: 2rem 2rem;
+    max-width: 1200px;
 }
 
 .card {
@@ -36,22 +36,40 @@ st.markdown("""
     box-shadow: 0 4px 14px rgba(0,0,0,0.08);
 }
 
-.footer {
-    text-align: center;
-    padding: 12px;
-    color: gray;
-    font-size: 13px;
+.title {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.subtitle {
+    color: #666;
+    margin-bottom: 20px;
+}
+
+.stMetric {
+    background: white;
+    padding: 10px;
+    border-radius: 12px;
 }
 
 img {
     border-radius: 12px;
 }
 
+.footer {
+    text-align: center;
+    padding: 20px;
+    color: gray;
+    font-size: 13px;
+    margin-top: 40px;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# MODEL
+# LOAD MODEL
 # ==========================================
 @st.cache_resource
 def load_model():
@@ -60,7 +78,7 @@ def load_model():
 model = load_model()
 
 # ==========================================
-# NOMINAL & COLOR
+# NOMINAL + COLOR MAP
 # ==========================================
 nominal_map = {
     0: 1000,
@@ -86,12 +104,12 @@ color_map = {
 # SIDEBAR
 # ==========================================
 with st.sidebar:
-    st.title("💰 RupiScan Pro")
-    st.info("Deteksi uang Rupiah pakai YOLOv8 (Laravel-like quality)")
-    mode = st.radio("Input", ["Upload", "Kamera"])
+    st.title("💰 RupiScan AI")
+    st.info("Deteksi uang Rupiah menggunakan YOLOv8")
+    mode = st.radio("Input", ["Upload Gambar", "Kamera"])
 
 # ==========================================
-# DETECTION ENGINE (FIXED QUALITY)
+# DETECTION ENGINE
 # ==========================================
 def detect(image):
 
@@ -100,9 +118,6 @@ def detect(image):
 
     output = image.copy()
 
-    h, w = output.shape[:2]
-
-    # FIX: scaling stabil seperti web canvas
     box_thickness = 2
     font_scale = 0.6
 
@@ -116,46 +131,16 @@ def detect(image):
 
         color = color_map.get(cls, (0, 255, 0))
 
-        # BOX (sharp seperti Laravel canvas)
-        cv2.rectangle(
-            output,
-            (x1, y1),
-            (x2, y2),
-            color,
-            box_thickness,
-            lineType=cv2.LINE_AA
-        )
+        cv2.rectangle(output, (x1, y1), (x2, y2), color, box_thickness, cv2.LINE_AA)
 
-        (tw, th), _ = cv2.getTextSize(
-            label,
-            cv2.FONT_HERSHEY_SIMPLEX,
-            font_scale,
-            2
-        )
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 2)
 
-        # label bg
-        cv2.rectangle(
-            output,
-            (x1, y1 - th - 6),
-            (x1 + tw + 8, y1),
-            color,
-            -1,
-            lineType=cv2.LINE_AA
-        )
+        cv2.rectangle(output, (x1, y1 - th - 6), (x1 + tw + 8, y1), color, -1, cv2.LINE_AA)
 
-        # text
-        cv2.putText(
-            output,
-            label,
-            (x1 + 4, y1 - 4),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            font_scale,
-            (255, 255, 255),
-            2,
-            lineType=cv2.LINE_AA
-        )
+        cv2.putText(output, label, (x1 + 4, y1 - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, font_scale,
+                    (255, 255, 255), 2, cv2.LINE_AA)
 
-    # hitung total
     classes = boxes.cls.cpu().numpy().astype(int)
     counter = Counter(classes)
 
@@ -178,10 +163,10 @@ def detect(image):
     return output, details, total
 
 # ==========================================
-# TITLE
+# HEADER
 # ==========================================
-st.title("💰 RupiScan AI Pro")
-st.markdown("### Hasil Deteksi dibuat seperti dashboard Laravel (sharp & stabil)")
+st.markdown('<div class="title">💰 RupiScan Dashboard</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">AI untuk deteksi & menghitung uang Rupiah secara otomatis</div>', unsafe_allow_html=True)
 
 st.divider()
 
@@ -190,57 +175,67 @@ st.divider()
 # ==========================================
 img = None
 
-if mode == "Upload":
-    up = st.file_uploader("Upload gambar", type=["jpg", "jpeg", "png"])
-    if up:
-        img = Image.open(up)
+col_input, col_info = st.columns([1, 1])
 
-else:
-    cam = st.camera_input("Ambil gambar")
-    if cam:
-        img = Image.open(cam)
+with col_input:
+    if mode == "Upload Gambar":
+        file = st.file_uploader("Upload gambar uang", type=["jpg", "jpeg", "png"])
+        if file:
+            img = Image.open(file)
+    else:
+        cam = st.camera_input("Ambil gambar")
+        if cam:
+            img = Image.open(cam)
+
+with col_info:
+    st.markdown("### 📊 Info")
+    st.info("Upload gambar atau ambil foto untuk mulai deteksi uang")
 
 # ==========================================
-# PROCESS
+# PROCESS RESULT
 # ==========================================
 if img is not None:
 
     img = img.convert("RGB")
     image_np = np.array(img)
 
-    with st.spinner("Detecting..."):
+    with st.spinner("🔍 Mendeteksi uang..."):
         result, details, total = detect(image_np)
 
-    # FIX: jangan auto resize Streamlit
     result = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
 
-    col1, col2 = st.columns([1, 1])
+    st.divider()
+
+    # ==========================================
+    # MAIN DASHBOARD LAYOUT
+    # ==========================================
+    col1, col2, col3 = st.columns([1, 1, 1])
 
     with col1:
         st.markdown("### 📷 Original")
-        st.image(image_np, width=500)
+        st.image(image_np, use_container_width=True)
 
     with col2:
         st.markdown("### 🎯 Detection Result")
+        st.metric("💵 Total Uang", f"Rp {total:,.0f}")
+        st.image(result, use_container_width=True)
 
-        st.metric("Total Uang", f"Rp {total:,.0f}")
-
-        # FIX LARAVEL STYLE: fixed width (bukan container width)
-        st.image(result, width=500)
-
-        st.write("---")
-
+    with col3:
+        st.markdown("### 📦 Detail")
         if details:
             for d in details:
-                st.write(f"💵 Rp {d['nominal']:,} → {d['jumlah']} lembar")
+                st.write(f"💵 Rp {d['nominal']:,}")
+                st.write(f"Jumlah: {d['jumlah']} lembar")
+                st.write(f"Subtotal: Rp {d['subtotal']:,}")
+                st.write("---")
         else:
-            st.warning("Tidak terdeteksi")
+            st.warning("Tidak ada uang terdeteksi")
 
 # ==========================================
 # FOOTER
 # ==========================================
 st.markdown("""
 <div class="footer">
-    RupiScan Pro • Laravel-like Detection UI
+    RupiScan AI • Clean Dashboard UI Version
 </div>
 """, unsafe_allow_html=True)
